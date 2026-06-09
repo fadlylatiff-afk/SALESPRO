@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Monitoring - PT CONCH Sulawesi</title>
+
+    <!-- Dependencies -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        conch: '#c00000', // Warna merah khas Conch
+                        'conch-light': '#ff4d4d',
+                    }
+                }
+            }
+        }
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/sweetalert2/11.10.8/sweetalert2.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sweetalert2/11.10.8/sweetalert2.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        #loadingOverlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.8); z-index: 9999; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
+        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #c00000; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .spa-view { display: none; opacity: 0; transition: opacity 0.3s ease-in-out; }
+        .spa-view.active { display: block; opacity: 1; }
+        
+        #salesMap { height: 400px; z-index: 10; border-radius: 0.75rem; }
+        
+        .nav-item { border-bottom: 2px solid transparent; transition: all 0.2s; }
+        .nav-item:hover { color: #c00000; }
+        .nav-item.active { color: #c00000; border-bottom: 2px solid #c00000; }
+
+        /* Mobile Menu */
+        #mobile-menu { display: none; }
+        #mobile-menu.active { display: block; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased h-screen flex flex-col">
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay"><div class="spinner"></div></div>
+
+    <!-- Header & Navigation -->
+    <header class="bg-white shadow-sm z-50 sticky top-0">
+        <div class="max-w-7xl mx-auto px-4 h-16 flex justify-between items-center">
+            <!-- Logo -->
+            <div class="flex items-center gap-3 cursor-pointer" onclick="navigateTo('dashboard')">
+                <div class="bg-conch text-white p-2 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-building text-xl"></i>
+                </div>
+                <span class="font-bold text-xl text-gray-900 tracking-tight">PT <span class="text-conch">CONCH</span></span>
+            </div>
+
+            <!-- Desktop Nav -->
+            <nav class="hidden md:flex space-x-8 h-full items-center">
+                <a href="#" onclick="navigateTo('dashboard')" id="nav-dashboard" class="nav-item active h-full flex items-center px-1 text-sm font-semibold text-gray-500">Dashboard</a>
+                <a href="#" onclick="navigateTo('market')" id="nav-market" class="nav-item h-full flex items-center px-1 text-sm font-semibold text-gray-500">Market Share</a>
+                <a href="#" onclick="navigateTo('harga')" id="nav-harga" class="nav-item h-full flex items-center px-1 text-sm font-semibold text-gray-500">Harga Pasar</a>
+                <a href="#" onclick="navigateTo('sales')" id="nav-sales" class="nav-item h-full flex items-center px-1 text-sm font-semibold text-gray-500">Data Sales</a>
+                <a href="#" onclick="navigateTo('distributor')" id="nav-distributor" class="nav-item h-full flex items-center px-1 text-sm font-semibold text-gray-500">Info Distributor</a>
+            </nav>
+
+            <!-- Actions -->
+            <div class="flex items-center gap-3">
+                <button onclick="openQuickUpdate()" class="hidden sm:flex items-center gap-2 bg-conch text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-800 transition shadow-sm">
+                    <i class="fas fa-bolt"></i> Update Cepat
+                </button>
+                <button onclick="toggleMobileMenu()" class="md:hidden text-gray-500 hover:text-conch text-2xl focus:outline-none">
+                    <i class="fas fa-bars"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Mobile Nav Menu -->
+        <div id="mobile-menu" class="md:hidden bg-white border-t border-gray-100 absolute w-full shadow-lg">
+            <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+                <a href="#" onclick="navigateTo('dashboard'); toggleMobileMenu()" class="block px-3 py-2 rounded-md text-base font-medium text-gray-900 hover:bg-slate-50">Dashboard</a>
+                <a href="#" onclick="navigateTo('market'); toggleMobileMenu()" class="block px-3 py-2 rounded-md text-base font-medium text-gray-600 hover:bg-slate-50">Market Share</a>
+                <a href="#" onclick="navigateTo('harga'); toggleMobileMenu()" class="block px-3 py-2 rounded-md text-base font-medium text-gray-600 hover:bg-slate-50">Harga Pasar</a>
+                <a href="#" onclick="navigateTo('sales'); toggleMobileMenu()" class="block px-3 py-2 rounded-md text-base font-medium text-gray-600 hover:bg-slate-50">Data Sales</a>
+                <a href="#" onclick="navigateTo('distributor'); toggleMobileMenu()" class="block px-3 py-2 rounded-md text-base font-medium text-gray-600 hover:bg-slate-50">Info Distributor</a>
+                <button onclick="openQuickUpdate(); toggleMobileMenu()" class="w-full text-left px-3 py-2 rounded-md text-base font-medium text-conch hover:bg-slate-50"><i class="fas fa-bolt mr-2"></i> Update Cepat</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow overflow-auto p-4 lg:p-8">
+        <div class="max-w-7xl mx-auto">
+            
+            <!-- VIEW: DASHBOARD -->
+            <div id="view-dashboard" class="spa-view active space-y-6">
+                <!-- Filter Dashboard -->
+                <div class="bg-white rounded-xl shadow-sm p-4 border border-gray-100 flex flex-wrap gap-4 items-center justify-between">
+                    <h2 class="text-lg font-bold text-gray-800 hidden md:block"><i class="fas fa-filter text-conch mr-2"></i>Filter Performa</h2>
+                    <div class="flex flex-wrap gap-3 w-full md:w-auto">
+                        <select id="filter-area" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-conch focus:border-conch p-2 flex-1 md:flex-none outline-none">
+                            <option value="all">Semua Area (Sulawesi)</option>
+                            <option value="sulsel">Sulawesi Selatan</option>
+                            <option value="sulut">Sulawesi Utara</option>
+                            <option value="sulteng">Sulawesi Tengah</option>
+                            <option value="sultra">Sulawesi Tenggara</option>
+                        </select>
+                        <select id="filter-month" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-conch focus:border-conch p-2 flex-1 md:flex-none outline-none">
+                            <option value="all">Semua Bulan</option>
+                            <option value="1">Januari</option>
+                            <option value="2">Februari</option>
+                            <option value="3">Maret</option>
+                            <option value="4">April</option>
+                            <option value="5">Mei</option>
+                            <option value="6" selected>Juni</option>
+                        </select>
+                        <select id="filter-year" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-conch focus:border-conch p-2 flex-1 md:flex-none outline-none">
+                            <option value="2026" selected>2026</option>
+                            <option value="2025">2025</option>
+                        </select>
+                        <button onclick="applyDashboardFilter()" class="bg-conch text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-800 transition w-full md:w-auto"><i class="fas fa-search mr-2"></i>Terapkan</button>
+                    </div>
+                </div>
+
+                <!-- Top KPI Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-sm font-medium text-gray-500 mb-1">Penjualan Tahunan</p>
+                                <h3 class="text-2xl font-bold text-gray-800" id="kpi-annual-sales">854,000 <span class="text-sm font-normal text-gray-500">Ton</span></h3>
+                            </div>
+                            <div class="p-3 bg-red-50 text-conch rounded-lg"><i class="fas fa-chart-line text-xl"></i></div>
+                        </div>
+                        <p class="mt-4 text-sm text-green-600 flex items-center font-medium"><i class="fas fa-arrow-up mr-1"></i> <span id="kpi-annual-growth">5.2%</span> <span class="text-gray-400 ml-1 font-normal">vs tahun lalu</span></p>
+                    </div>
+
+                    <div class="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-sm font-medium text-gray-500 mb-1">Penjualan Bulanan</p>
+                                <h3 class="text-2xl font-bold text-gray-800" id="kpi-monthly-sales">145,230 <span class="text-sm font-normal text-gray-500">Ton</span></h3>
+                            </div>
+                            <div class="p-3 bg-blue-50 text-blue-600 rounded-lg"><i class="fas fa-calendar-check text-xl"></i></div>
+                        </div>
+                        <p class="mt-4 text-sm text-green-600 flex items-center font-medium"><i class="fas fa-arrow-up mr-1"></i> <span id="kpi-monthly-growth">12.5%</span> <span class="text-gray-400 ml-1 font-normal">vs bulan lalu</span></p>
+                    </div>
+
+                    <div class="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-sm font-medium text-gray-500 mb-1">Target Bulanan</p>
+                                <h3 class="text-2xl font-bold text-gray-800"><span id="kpi-target-month">100.1</span><span class="text-lg text-gray-600">%</span></h3>
+                            </div>
+                            <div class="p-3 bg-purple-50 text-purple-600 rounded-lg"><i class="fas fa-bullseye text-xl"></i></div>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2.5 mt-4">
+                            <div id="bar-target-month" class="bg-purple-600 h-2.5 rounded-full" style="width: 100%"></div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-sm font-medium text-gray-500 mb-1">Target Tahunan</p>
+                                <h3 class="text-2xl font-bold text-gray-800"><span id="kpi-target-year">85.4</span><span class="text-lg text-gray-600">%</span></h3>
+                            </div>
+                            <div class="p-3 bg-orange-50 text-orange-600 rounded-lg"><i class="fas fa-flag-checkered text-xl"></i></div>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2.5 mt-4">
+                            <div id="bar-target-year" class="bg-orange-500 h-2.5 rounded-full" style="width: 85.4%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts & Map Row -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Trend Chart -->
+                    <div class="bg-white rounded-xl shadow-sm p-5 border border-gray-100 lg:col-span-2">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-lg font-bold text-gray-800">Tren Penjualan 2026 (Tonase)</h2>
+                        </div>
+                        <div class="relative h-80 w-full">
+                            <canvas id="salesTrendChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Peta & Info Box -->
+                    <div class="bg-white rounded-xl shadow-sm p-5 border border-gray-100 lg:col-span-3 grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="lg:col-span-2">
+                            <h2 class="text-lg font-bold text-gray-800 mb-4">Sebaran Logistik & Gudang</h2>
+                            <div id="salesMap" class="w-full bg-slate-100 border border-slate-200"></div>
+                        </div>
+                        <div class="flex flex-col space-y-4">
+                            <h2 class="text-lg font-bold text-gray-800 mb-2 border-b pb-2">Harga Retail Merek <span id="summary-area" class="text-sm font-normal text-gray-500 ml-1">(Pilih Area)</span></h2>
+                            
+                            <div id="price-list-container" class="space-y-3">
+                                <!-- Placeholder sebelum map diklik -->
+                                <div class="p-6 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-center flex flex-col items-center justify-center h-full min-h-[250px]">
+                                    <i class="fas fa-map-marked-alt text-4xl text-slate-300 mb-3"></i>
+                                    <p class="text-sm text-slate-500 font-medium">Klik salah satu titik area pada peta di samping untuk melihat rincian harga pasar per merek.</p>
+                                </div>
+                            </div>
+                            
+                            <button onclick="resetPriceSummary()" class="mt-auto text-sm text-gray-500 hover:text-conch transition text-right w-full"><i class="fas fa-sync-alt mr-1"></i> Reset Tampilan</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: MARKET SHARE -->
+            <div id="view-market" class="spa-view space-y-6">
+                <!-- Filter Analisis -->
+                <div class="bg-white rounded-xl shadow-sm p-4 border border-gray-100 flex flex-wrap gap-4 items-center justify-between">
+                    <h2 class="text-lg font-bold text-gray-800 hidden md:block"><i class="fas fa-filter text-conch mr-2"></i>Filter Analisis</h2>
+                    <div class="flex flex-wrap gap-3 w-full md:w-auto">
+                        <select class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-conch focus:border-conch p-2 flex-1 md:flex-none outline-none">
+                            <option value="">Semua Area (Sulawesi)</option>
+                            <option value="sulsel">Sulawesi Selatan</option>
+                        </select>
+                        <select class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-conch focus:border-conch p-2 flex-1 md:flex-none outline-none">
+                            <option value="">Semua Bulan</option>
+                            <option value="6">Juni</option>
+                        </select>
+                        <button class="bg-conch text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-800 transition w-full md:w-auto">Terapkan Filter</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+                        <h2 class="text-lg font-bold text-gray-800 mb-4">Market Share - Q2 2026</h2>
+                        <div class="relative h-80 w-full flex justify-center">
+                            <canvas id="marketShareChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+                        <h2 class="text-lg font-bold text-gray-800 mb-4">Perbandingan Penjualan vs Kompetitor (Ton)</h2>
+                        <div class="relative h-80 w-full">
+                            <canvas id="competitorChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Peta Market Share Interaktif -->
+                <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+                    <h2 class="text-lg font-bold text-gray-800 mb-4">Peta Komposisi Market Share (Volume & Persentase)</h2>
+                    <div id="marketMap" style="height: 450px; z-index: 10; border-radius: 0.75rem;" class="w-full bg-slate-100 border border-slate-200"></div>
+                </div>
+            </div>
+
+            <!-- VIEW: HARGA PASAR -->
+            <div id="view-harga" class="spa-view space-y-6">
+                <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-lg font-bold text-gray-800">Pantauan Harga Retail (Per Sak 50kg)</h2>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-gray-500">
+                            <thead class="text-xs text-gray-700 uppercase bg-slate-50 border-y border-slate-200">
+                                <tr>
+                                    <th scope="col" class="px-6 py-4">Provinsi/Area</th>
+                                    <th scope="col" class="px-6 py-4 text-conch font-bold">CONCH</th>
+                                    <th scope="col" class="px-6 py-4">Tonasa</th>
+                                    <th scope="col" class="px-6 py-4">Bosowa</th>
+                                    <th scope="col" class="px-6 py-4">Dynamix</th>
+                                    <th scope="col" class="px-6 py-4">Status Selisih</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="bg-white border-b hover:bg-slate-50">
+                                    <td class="px-6 py-4 font-medium text-gray-900">Makassar, Sulsel</td>
+                                    <td class="px-6 py-4 font-bold text-gray-900">Rp 58.000</td>
+                                    <td class="px-6 py-4">Rp 61.500</td>
+                                    <td class="px-6 py-4">Rp 60.000</td>
+                                    <td class="px-6 py-4">Rp 59.500</td>
+                                    <td class="px-6 py-4"><span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-1 rounded">Aman (-Rp 3.5k)</span></td>
+                                </tr>
+                                <tr class="bg-white border-b hover:bg-slate-50">
+                                    <td class="px-6 py-4 font-medium text-gray-900">Manado, Sulut</td>
+                                    <td class="px-6 py-4 font-bold text-gray-900">Rp 68.000</td>
+                                    <td class="px-6 py-4">Rp 71.000</td>
+                                    <td class="px-6 py-4">Rp 69.500</td>
+                                    <td class="px-6 py-4">-</td>
+                                    <td class="px-6 py-4"><span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-1 rounded">Aman (-Rp 3k)</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: DATA SALES -->
+            <div id="view-sales" class="spa-view space-y-6">
+                <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+                    <div class="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+                        <h2 class="text-lg font-bold text-gray-800">Laporan Penjualan Detail</h2>
+                        <div class="flex gap-2 w-full sm:w-auto">
+                            <!-- Tombol untuk trigger fetch data -->
+                            <button onclick="loadDataFromDatabase()" class="bg-conch text-white hover:bg-red-800 px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center">
+                                <i class="fas fa-sync-alt mr-2"></i> Refresh Data
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Tabel tempat data Spreadsheet akan dimuat -->
+                    <div class="overflow-x-auto rounded-lg border border-slate-200">
+                        <table class="w-full text-sm text-left text-gray-500">
+                            <thead class="text-xs text-gray-700 uppercase bg-slate-50 border-b border-slate-200">
+                                <tr>
+                                    <th scope="col" class="px-6 py-4">Waktu Update</th>
+                                    <th scope="col" class="px-6 py-4">Tanggal Input</th>
+                                    <th scope="col" class="px-6 py-4">Area</th>
+                                    <th scope="col" class="px-6 py-4">Tonase (Ton)</th>
+                                    <th scope="col" class="px-6 py-4">Catatan</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sales-table-body">
+                                <!-- Initial State sebelum fetch -->
+                                <tr>
+                                    <td colspan="5" class="text-center py-12 bg-slate-50 border-dashed border-slate-300">
+                                        <i class="fas fa-table text-4xl text-slate-300 mb-3"></i>
+                                        <h3 class="text-lg font-medium text-slate-600">Menunggu Data...</h3>
+                                        <p class="text-sm text-slate-500 mt-1">Data penjualan akan dimuat secara otomatis dari Google Sheets.</p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: INFO DISTRIBUTOR -->
+            <div id="view-distributor" class="spa-view space-y-6">
+                <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+                    <div class="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+                        <h2 class="text-lg font-bold text-gray-800">Informasi Jaringan Distributor</h2>
+                        <button class="bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 px-4 rounded-lg text-sm font-semibold transition w-full sm:w-auto"><i class="fas fa-user-plus mr-2"></i>Tambah Distributor</button>
+                    </div>
+                    <div class="overflow-x-auto rounded-lg border border-slate-200">
+                        <table class="w-full text-sm text-left text-gray-500">
+                            <thead class="text-xs text-gray-700 uppercase bg-slate-50 border-b border-slate-200">
+                                <tr>
+                                    <th scope="col" class="px-6 py-4 whitespace-nowrap">Nama Perusahaan</th>
+                                    <th scope="col" class="px-6 py-4 whitespace-nowrap">Pemilik</th>
+                                    <th scope="col" class="px-6 py-4 whitespace-nowrap">No Kontak</th>
+                                    <th scope="col" class="px-6 py-4 whitespace-nowrap min-w-[200px]">Alamat</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="bg-white border-b hover:bg-slate-50">
+                                    <td class="px-6 py-4 font-bold text-gray-900">PT Bangun Semesta</td>
+                                    <td class="px-6 py-4 font-medium text-gray-700">Bpk. Haryanto</td>
+                                    <td class="px-6 py-4 text-blue-600">0812-3456-7890</td>
+                                    <td class="px-6 py-4">Jl. Kima Raya 1, Kav. 12, Makassar</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        // URL Google Apps Script Web App Anda (PASTIKAN GANTI INI)
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwKaRfJ2CqWd0I4fbl6Cn1zgF1ER2I3Y4djTziQFvlLG2k7wVjDcKbxz0rX6dwVddylng/exec';
+
+        // State Management & Data Dummy
+        let currentState = {
+            salesHistory: {
+                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun'],
+                conch: [120000, 125000, 118000, 135000, 142000, 145230],
+                target: [130000, 130000, 135000, 140000, 140000, 145000]
+            },
+            marketShare: [32.1, 38.5, 20.4, 9.0],
+            competitors: {
+                labels: ['Makassar', 'Manado', 'Palu', 'Kendari'],
+                conch: [45000, 25000, 18000, 22000],
+                tonasa: [55000, 22000, 20000, 15000]
+            },
+            areaPrices: {
+                "Makassar": { conch: 58000, tonasa: 61500, bosowa: 60000, dynamix: 59500 },
+                "Manado": { conch: 68000, tonasa: 71000, bosowa: 69500, dynamix: 0 },
+                "Palu": { conch: 65500, tonasa: 66000, bosowa: 64000, dynamix: 65000 },
+                "Kendari": { conch: 64000, tonasa: 67500, bosowa: 66000, dynamix: 65000 }
+            }
+        };
+
+        let charts = { sales: null, market: null, competitor: null };
+        let leafletMap = null;
+        let marketMapObj = null;
+
+        function toggleMobileMenu() {
+            document.getElementById('mobile-menu').classList.toggle('active');
+        }
+
+        // Navigasi dengan Pemicu Load Data
+        function navigateTo(viewId) {
+            document.querySelectorAll('.spa-view').forEach(el => el.classList.remove('active'));
+            const target = document.getElementById('view-' + viewId);
+            if (!target) return;
+            
+            target.classList.add('active');
+
+            document.querySelectorAll('.nav-item').forEach(el => {
+                el.classList.remove('active', 'text-conch', 'border-conch');
+                el.classList.add('text-gray-500');
+            });
+            const activeNav = document.getElementById('nav-' + viewId);
+            if (activeNav) {
+                activeNav.classList.remove('text-gray-500');
+                activeNav.classList.add('active', 'text-conch');
+            }
+
+            if(viewId === 'dashboard') {
+                renderSalesTrendChart();
+                if(leafletMap) { setTimeout(() => leafletMap.invalidateSize(), 150); }
+            } else if(viewId === 'market') {
+                renderMarketCharts();
+                if(marketMapObj) { setTimeout(() => marketMapObj.invalidateSize(), 150); }
+            } else if(viewId === 'sales') {
+                // PANGGIL FUNGSI FETCH SAAT MASUK KE MENU SALES
+                loadDataFromDatabase();
+            }
+        }
+
+        // ==========================================
+        // FUNGSI FETCH DARI GOOGLE SHEETS
+        // ==========================================
+        function loadDataFromDatabase() {
+            const tableBody = document.getElementById('sales-table-body');
+            
+            // Set tampilan Loading
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="5" class="text-center py-10 bg-slate-50 text-slate-500">
+                        <i class="fas fa-circle-notch fa-spin text-conch text-3xl mb-3"></i>
+                        <p class="font-medium">Mengambil data dari Google Sheets...</p>
+                    </td>
+                </tr>
+            `;
+
+            // Peringatan jika URL belum diset
+            if (SCRIPT_URL.includes("ISI_DENGAN_URL")) {
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="text-center py-10 bg-red-50 text-red-600 border-dashed border-red-200">
+                            <i class="fas fa-exclamation-triangle text-3xl mb-3"></i>
+                            <p class="font-bold">Gagal Memuat Data</p>
+                            <p class="text-sm mt-1 text-red-500">Variabel <b>SCRIPT_URL</b> di dalam kode belum Anda ganti dengan URL Deploy Apps Script Anda.</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            // Memulai proses GET Data
+            fetch(SCRIPT_URL)
+                .then(response => response.json())
+                .then(result => {
+                    if (result.status === "success") {
+                        const dataSales = result.data;
+                        tableBody.innerHTML = ''; // Hapus loading element
+
+                        if (dataSales.length === 0) {
+                            tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-slate-500">Belum ada data penjualan tercatat di Spreadsheet.</td></tr>`;
+                            return;
+                        }
+
+                        // Membalik urutan agar data paling baru (baris bawah sheet) muncul di atas
+                        dataSales.reverse().forEach(item => {
+                            // Mencoba format waktu standar jika Timestamp ada
+                            let formattedTime = item.Timestamp || '-';
+                            if(formattedTime !== '-') {
+                                const dateObj = new Date(item.Timestamp);
+                                if(!isNaN(dateObj)) {
+                                    formattedTime = dateObj.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+                                }
+                            }
+
+                            // Membuat elemen baris tabel (TR)
+                            const tr = document.createElement('tr');
+                            tr.className = 'bg-white border-b hover:bg-slate-50 transition-colors';
+                            
+                            // Menyusun HTML untuk kolom
+                            tr.innerHTML = `
+                                <td class="px-6 py-4 whitespace-nowrap text-xs text-gray-500">${formattedTime}</td>
+                                <td class="px-6 py-4 whitespace-nowrap font-medium text-gray-900">${item.Tanggal || '-'}</td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="bg-slate-100 text-slate-700 px-2 py-1 rounded text-xs font-semibold">${item.Area || '-'}</span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap font-bold text-conch">${parseInt(item.Tonase || 0).toLocaleString('en-US')}</td>
+                                <td class="px-6 py-4 text-gray-600 text-sm max-w-xs truncate" title="${item.Catatan || '-'}">${item.Catatan || '-'}</td>
+                            `;
+                            
+                            tableBody.appendChild(tr);
+                        });
+                    } else {
+                        throw new Error(result.message || 'Respons API tidak sukses.');
+                    }
+                })
+                .catch(error => {
+                    console.error("Gagal mengambil data:", error);
+                    tableBody.innerHTML = `
+                        <tr>
+                            <td colspan="5" class="text-center py-8 text-red-500">
+                                <i class="fas fa-times-circle text-2xl mb-2"></i><br>
+                                Terjadi kesalahan jaringan atau CORS saat memuat data.<br>
+                                <span class="text-xs text-gray-400">Pastikan Web App di-deploy dengan akses 'Siapa Saja (Anyone)'.</span>
+                            </td>
+                        </tr>
+                    `;
+                });
+        }
+        // ==========================================
+
+        function destroyChart(chartKey) {
+            if (charts[chartKey]) {
+                charts[chartKey].destroy();
+                charts[chartKey] = null;
+            }
+        }
+
+        function renderSalesTrendChart() {
+            destroyChart('sales');
+            const ctx = document.getElementById('salesTrendChart');
+            if(!ctx) return;
+
+            charts.sales = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: currentState.salesHistory.labels,
+                    datasets: [
+                        { label: 'Realisasi PT CONCH', data: currentState.salesHistory.conch, borderColor: '#c00000', backgroundColor: 'rgba(192, 0, 0, 0.1)', borderWidth: 3, fill: true, tension: 0.4 },
+                        { label: 'Target Bulanan', data: currentState.salesHistory.target, borderColor: '#64748b', borderDash: [5, 5], borderWidth: 2, fill: false, tension: 0.1 }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } }
+            });
+        }
+
+        function renderMarketCharts() {
+            destroyChart('market');
+            const ctxMarket = document.getElementById('marketShareChart');
+            if(ctxMarket) {
+                charts.market = new Chart(ctxMarket, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['CONCH', 'Tonasa', 'Bosowa', 'Lainnya'],
+                        datasets: [{ data: currentState.marketShare, backgroundColor: ['#c00000', '#1e40af', '#ea580c', '#94a3b8'], borderWidth: 0 }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } }, cutout: '65%' }
+                });
+            }
+
+            destroyChart('competitor');
+            const ctxComp = document.getElementById('competitorChart');
+            if(ctxComp) {
+                charts.competitor = new Chart(ctxComp, {
+                    type: 'bar',
+                    data: {
+                        labels: currentState.competitors.labels,
+                        datasets: [
+                            { label: 'CONCH', data: currentState.competitors.conch, backgroundColor: '#c00000', borderRadius: 4 },
+                            { label: 'Tonasa', data: currentState.competitors.tonasa, backgroundColor: '#1e40af', borderRadius: 4 }
+                        ]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } } }
+                });
+            }
+        }
+
+        function initMap() {
+            leafletMap = L.map('salesMap').setView([-2.5, 120.5], 5);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap', maxZoom: 19 }).addTo(leafletMap);
+
+            const conchIcon = L.divIcon({ className: 'custom-div-icon', html: "<div style='background-color:#c00000; width:16px; height:16px; border-radius:50%; border:3px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5);'></div>", iconSize: [16, 16], iconAnchor: [8, 8] });
+
+            const locations = [
+                { name: "Pabrik / Gudang", city: "Makassar", coords: [-5.1476, 119.4327], salesMonth: 45000, salesYear: 280000 },
+                { name: "Depot Logistik", city: "Manado", coords: [1.4821, 124.8458], salesMonth: 25000, salesYear: 150000 },
+                { name: "Gudang Distribusi", city: "Palu", coords: [-0.8917, 119.8707], salesMonth: 18000, salesYear: 110000 },
+                { name: "Depot Transit", city: "Kendari", coords: [-3.9984, 122.5129], salesMonth: 22000, salesYear: 135000 }
+            ];
+
+            locations.forEach(loc => {
+                const marker = L.marker(loc.coords, {icon: conchIcon}).addTo(leafletMap);
+                const popupContent = `
+                    <div style="min-width: 180px; font-family: 'Inter', sans-serif;">
+                        <h4 style="margin: 0 0 8px 0; font-size: 14px; color: #c00000; font-weight: bold; border-bottom: 1px solid #eee; padding-bottom: 4px;">${loc.name} (${loc.city})</h4>
+                        <table style="width: 100%; font-size: 12px; color: #475569; margin-bottom: 5px;">
+                            <tr><td style="padding:2px 0;">Bulan Ini:</td><td style="text-align:right; font-weight:bold; color:#0f172a;">${loc.salesMonth.toLocaleString('en-US')} Ton</td></tr>
+                            <tr><td style="padding:2px 0;">Tahun Ini:</td><td style="text-align:right; font-weight:bold; color:#0f172a;">${loc.salesYear.toLocaleString('en-US')} Ton</td></tr>
+                        </table>
+                    </div>
+                `;
+                marker.bindPopup(popupContent);
+                marker.on('click', function() { updatePriceSummary(loc.city, currentState.areaPrices[loc.city]); });
+            });
+
+            initMarketMap();
+        }
+
+        function updatePriceSummary(areaName, prices) {
+            document.getElementById('summary-area').innerText = `(${areaName})`;
+            document.getElementById('price-list-container').innerHTML = `
+                <div class="p-3 bg-red-50 rounded-xl border border-red-100 flex justify-between items-center transition">
+                    <span class="font-bold text-red-800 flex items-center"><i class="fas fa-building mr-2 text-red-600"></i> CONCH</span>
+                    <span class="font-bold text-gray-900 text-lg">Rp ${prices.conch.toLocaleString('id-ID')}</span>
+                </div>
+                <div class="p-3 bg-blue-50 rounded-xl border border-blue-100 flex justify-between items-center transition">
+                    <span class="font-bold text-blue-800 flex items-center"><i class="fas fa-cube mr-2 text-blue-600"></i> Tonasa</span>
+                    <span class="font-bold text-gray-900 text-lg">Rp ${prices.tonasa.toLocaleString('id-ID')}</span>
+                </div>
+                <div class="p-3 bg-orange-50 rounded-xl border border-orange-100 flex justify-between items-center transition">
+                    <span class="font-bold text-orange-800 flex items-center"><i class="fas fa-cube mr-2 text-orange-600"></i> Bosowa</span>
+                    <span class="font-bold text-gray-900 text-lg">Rp ${prices.bosowa.toLocaleString('id-ID')}</span>
+                </div>
+                <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center transition">
+                    <span class="font-bold text-slate-700 flex items-center"><i class="fas fa-cube mr-2 text-slate-500"></i> Dynamix</span>
+                    <span class="font-bold text-gray-900 text-lg">${prices.dynamix > 0 ? 'Rp ' + prices.dynamix.toLocaleString('id-ID') : '<span class="text-sm text-gray-400">Tidak Ada</span>'}</span>
+                </div>
+            `;
+        }
+
+        window.resetPriceSummary = function() {
+            document.getElementById('summary-area').innerText = `(Pilih Area)`;
+            document.getElementById('price-list-container').innerHTML = `<div class="p-6 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-center flex flex-col items-center justify-center h-full min-h-[250px]"><i class="fas fa-map-marked-alt text-4xl text-slate-300 mb-3"></i><p class="text-sm text-slate-500 font-medium">Klik salah satu titik area pada peta di samping untuk melihat rincian harga pasar per merek.</p></div>`;
+        };
+
+        function applyDashboardFilter() {
+            const area = document.getElementById('filter-area').value;
+            const month = document.getElementById('filter-month').value;
+            const year = document.getElementById('filter-year').value;
+
+            Swal.fire({ title: 'Menerapkan Filter...', timer: 600, timerProgressBar: true, didOpen: () => { Swal.showLoading(); } }).then(() => {
+                let baseAnnual = 854000; let baseMonthly = 145230;
+                if(area !== 'all') { baseAnnual = baseAnnual * 0.35; baseMonthly = baseMonthly * 0.35; }
+                if(year === '2025') { baseAnnual = baseAnnual * 0.9; baseMonthly = baseMonthly * 0.85; }
+                if(month !== 'all' && month !== '6') { baseMonthly = baseMonthly * (Math.random() * (1.1 - 0.8) + 0.8); }
+
+                const targetMonth = Math.min(100, Math.max(70, (baseMonthly / 145000) * 100));
+                const targetYear = Math.min(100, Math.max(50, (baseAnnual / 1000000) * 100));
+
+                document.getElementById('kpi-annual-sales').innerHTML = `${Math.round(baseAnnual).toLocaleString('en-US')} <span class="text-sm font-normal text-gray-500">Ton</span>`;
+                document.getElementById('kpi-monthly-sales').innerHTML = `${Math.round(baseMonthly).toLocaleString('en-US')} <span class="text-sm font-normal text-gray-500">Ton</span>`;
+                
+                document.getElementById('kpi-target-month').innerText = targetMonth.toFixed(1);
+                document.getElementById('bar-target-month').style.width = `${targetMonth}%`;
+                
+                document.getElementById('kpi-target-year').innerText = targetYear.toFixed(1);
+                document.getElementById('bar-target-year').style.width = `${targetYear}%`;
+                document.getElementById('bar-target-month').className = targetMonth < 80 ? 'bg-red-500 h-2.5 rounded-full' : 'bg-purple-600 h-2.5 rounded-full';
+            });
+        }
+
+        function initMarketMap() {
+            if(marketMapObj) return; 
+            marketMapObj = L.map('marketMap').setView([-2.5, 120.5], 5);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap', maxZoom: 19 }).addTo(marketMapObj);
+
+            const marketData = [
+                { city: "Makassar", coords: [-5.1476, 119.4327], total: "100.000 Ton", conch: "45%", tonasa: "35%", bosowa: "20%" },
+                { city: "Manado", coords: [1.4821, 124.8458], total: "47.000 Ton", conch: "53%", tonasa: "40%", bosowa: "7%" }
+            ];
+
+            marketData.forEach(data => {
+                const icon = L.divIcon({ className: 'market-div-icon', html: `<div style='background-color:#c00000; color:white; padding:4px 8px; border-radius:12px; font-weight:bold; font-size:13px; border:2px solid white; box-shadow:0 2px 5px rgba(0,0,0,0.4); text-align:center;'>${data.conch}</div>`, iconSize: [40, 30], iconAnchor: [20, 15] });
+                L.marker(data.coords, {icon: icon}).addTo(marketMapObj).bindPopup(`
+                    <div style="min-width: 180px; font-family: 'Inter', sans-serif;">
+                        <h4 style="margin: 0 0 8px 0; font-size: 15px; color: #1e293b; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">Area: <b>${data.city}</b></h4>
+                        <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+                            <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 4px 0; color: #c00000; font-weight: bold;">CONCH</td><td style="padding: 4px 0; text-align: right; font-weight: bold;">${data.conch}</td></tr>
+                            <tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 4px 0; color: #1e40af; font-weight: bold;">Tonasa</td><td style="padding: 4px 0; text-align: right; font-weight: bold;">${data.tonasa}</td></tr>
+                        </table>
+                    </div>
+                 `);
+            });
+        }
+
+        function openQuickUpdate() {
+            const today = new Date().toISOString().split('T')[0];
+            Swal.fire({
+                title: 'Update Pencapaian Cepat',
+                html: `
+                    <div class="text-left space-y-3">
+                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Tanggal Update</label><input id="swal-date" type="date" value="${today}" class="w-full border border-gray-300 rounded p-2 outline-none focus:border-conch focus:ring-1 focus:ring-conch"></div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Pilih Area</label>
+                            <select id="swal-area" class="w-full border border-gray-300 rounded p-2 outline-none focus:border-conch focus:ring-1 focus:ring-conch">
+                                <option value="Makassar">Makassar & Sekitarnya</option><option value="Manado">Manado & Sekitarnya</option><option value="Palu">Palu & Sekitarnya</option><option value="Kendari">Kendari & Sekitarnya</option>
+                            </select>
+                        </div>
+                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Update Tonase (Ton)</label><input id="swal-ton" type="number" class="w-full border border-gray-300 rounded p-2 outline-none focus:border-conch focus:ring-1 focus:ring-conch" placeholder="Misal: 1500"></div>
+                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Note (Komposisi Data)</label><textarea id="swal-note" rows="3" class="w-full border border-gray-300 rounded p-2 outline-none focus:border-conch focus:ring-1 focus:ring-conch" placeholder="Contoh: Distributor AWN 2000 ton"></textarea></div>
+                    </div>
+                `,
+                showCancelButton: true, confirmButtonColor: '#c00000', cancelButtonColor: '#64748b', confirmButtonText: 'Simpan Data', cancelButtonText: 'Batal', focusConfirm: false,
+                preConfirm: () => {
+                    const date = document.getElementById('swal-date').value, area = document.getElementById('swal-area').value, ton = document.getElementById('swal-ton').value, note = document.getElementById('swal-note').value;
+                    if (!date || !ton) { Swal.showValidationMessage('Harap isi Tanggal dan Update Tonase!'); return false; }
+                    return { date, area, ton, note }
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire({ title: 'Menyimpan ke Spreadsheet...', text: 'Mohon tunggu sebentar', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); } });
+
+                    fetch(SCRIPT_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify(result.value)
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if(data.status === "success") {
+                            // Update total if currently on dashboard
+                            const kpiSales = document.getElementById('kpi-monthly-sales');
+                            if(kpiSales && !kpiSales.innerText.includes('Loading')) {
+                                let currentVal = parseInt(kpiSales.innerText.replace(/,/g, ''));
+                                let newVal = currentVal + parseInt(result.value.ton);
+                                kpiSales.innerHTML = `${newVal.toLocaleString('en-US')} <span class="text-sm font-normal text-gray-500">Ton</span>`;
+                            }
+                            
+                            // Jika sedang berada di tab Data Sales, refresh data otomatis
+                            const salesView = document.getElementById('view-sales');
+                            if (salesView && salesView.classList.contains('active')) {
+                                loadDataFromDatabase();
+                            }
+                            
+                            Swal.fire('Berhasil Disimpan!', 'Data Anda telah tercatat di Google Sheets.', 'success');
+                        } else {
+                            throw new Error(data.message);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        Swal.fire('Gagal Menyimpan!', 'Terdapat kesalahan koneksi atau SCRIPT_URL belum Anda atur.', 'error');
+                    });
+                }
+            });
+        }
+
+        function initApp() {
+            if (typeof L === 'undefined' || typeof Swal === 'undefined' || typeof Chart === 'undefined') {
+                setTimeout(initApp, 100);
+                return;
+            }
+            try {
+                initMap();
+                navigateTo('dashboard');
+            } catch(e) {
+                console.error("Initialization Error:", e);
+            }
+        }
+
+        window.onload = function() { initApp(); };
+    </script>
+</body>
+</html>
